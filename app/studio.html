@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sightbox Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#EFF1F2; --surface:#FFFFFF; --rail:#E7EBED; --sunk:#E3E8EA; --spine:#DDE3E6;
+  --ink:#14181C; --muted:#5A646C; --faint:#87919A; --rule:#CCD4D8; --hair:#DEE4E7;
+  --accent:#1D5C7A; --accent-ink:#FFFFFF; --accent-soft:#D8E6ED;
+  --signal:#A2620C; --signal-soft:#F6E8D1; --signal-line:#D2A14E;
+  --hot:#8F3413; --hot-soft:#F4DBD0;
+  --good:#28654A; --good-soft:#D6E9DE;
+  --new:#7A3E86; --new-soft:#EDDFF0;
+  --dead:#8A9298;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){ :root{
+  --ground:#0D1114; --surface:#151B1F; --rail:#111618; --sunk:#1C2429; --spine:#192025;
+  --ink:#E2E7E9; --muted:#939EA5; --faint:#6C777E; --rule:#283238; --hair:#1F272C;
+  --accent:#74B6D4; --accent-ink:#0A1013; --accent-soft:#19323E;
+  --signal:#DFAC5E; --signal-soft:#332614; --signal-line:#84632A;
+  --hot:#E08A66; --hot-soft:#3A2018;
+  --good:#7FC3A0; --good-soft:#172D23;
+  --new:#C79BD0; --new-soft:#2E2033;
+  --dead:#5C666C;
+}}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;background:var(--ground);color:var(--ink);font-family:var(--body);}
+body{min-width:1100px;overflow-x:auto;}
+button{font-family:var(--body);font-size:13px;background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:5px;padding:5px 10px;cursor:pointer;}
+button:hover{border-color:var(--accent);}
+button:active{background:var(--sunk);}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+input[type=text],input[type=number]{font-family:var(--mono);font-size:13px;background:var(--sunk);color:var(--ink);border:1px solid var(--rule);border-radius:5px;padding:4px 7px;}
+.mono{font-family:var(--mono);}
+h2{font-family:var(--display);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;}
+#app{display:flex;flex-direction:column;height:100vh;}
+
+/* top bar */
+#topbar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--hair);flex:none;}
+#topbar .brand{font-family:var(--display);font-weight:800;font-size:15px;}
+#topbar .projname{font-weight:600;}
+#topbar .filepath{color:var(--faint);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;}
+#status{flex:1;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#status.error{color:var(--hot);}
+#status.warn{color:var(--signal);}
+
+/* main grid */
+#main{flex:1;display:flex;min-height:0;}
+#bin{width:260px;flex:none;background:var(--surface);border-right:1px solid var(--hair);padding:12px;overflow-y:auto;}
+#bin section{margin-bottom:18px;}
+#sourceList,#folderList{list-style:none;margin:0;padding:0;}
+#sourceList li,#folderList li{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 4px;border-radius:4px;font-size:13px;cursor:pointer;}
+#sourceList li:hover,#folderList li:not(.added):hover{background:var(--accent-soft);}
+#folderList li.added{color:var(--faint);cursor:default;}
+.rowname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.rowmeta{color:var(--faint);font-size:11px;flex:none;}
+.remove-btn{background:none;border:none;color:var(--faint);cursor:pointer;padding:0 4px;font-size:13px;}
+.remove-btn:hover{color:var(--hot);}
+#addsource{display:flex;gap:6px;}
+#addsource input{flex:1;min-width:0;}
+
+#center{flex:1;display:flex;flex-direction:column;min-width:0;}
+#preview{flex:1;display:flex;align-items:center;justify-content:center;background:var(--rail);position:relative;min-height:160px;}
+#previewBox{position:relative;width:100%;max-width:960px;aspect-ratio:16/9;background:#000;overflow:hidden;}
+#previewBox video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;background:#000;}
+#previewTime{position:absolute;bottom:6px;right:8px;color:#fff;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px;font-size:12px;}
+
+#transport{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);flex:none;}
+#transport .spacer{flex:1;}
+#timecode{font-size:13px;color:var(--muted);}
+
+#timelineWrap{flex:none;height:120px;overflow-x:auto;overflow-y:hidden;background:var(--surface);position:relative;}
+#timelineInner{position:relative;height:100%;}
+#ruler{height:20px;position:relative;border-bottom:1px solid var(--hair);background:var(--sunk);}
+.tick{position:absolute;top:0;height:100%;font-size:10px;color:var(--faint);padding-left:3px;border-left:1px solid var(--rule);white-space:nowrap;}
+#track{position:relative;height:calc(100% - 20px);background:var(--ground);}
+.cut-block{position:absolute;top:8px;bottom:8px;background:var(--surface);border:1px solid var(--rule);border-radius:4px;overflow:hidden;cursor:grab;user-select:none;}
+.cut-block.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+.cut-block.dragging{opacity:.75;cursor:grabbing;z-index:5;}
+.cut-label{font-size:11px;padding:4px 6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+.handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;}
+.handle-left{left:0;}
+.handle-right{right:0;}
+.handle:hover{background:var(--accent-soft);}
+.playhead-line{position:absolute;top:0;bottom:0;width:1px;background:var(--hot);pointer-events:none;z-index:9;}
+
+#inspector{width:240px;flex:none;background:var(--surface);border-left:1px solid var(--hair);padding:12px;overflow-y:auto;}
+#inspector .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;}
+#inspector .row input{width:90px;}
+#inspector .muted{color:var(--faint);font-size:13px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">Studio</div>
+    <div class="projname" id="projName">—</div>
+    <div class="filepath mono" id="filePath"></div>
+    <div id="status"></div>
+    <button class="primary" id="exportBtn">Export</button>
+  </header>
+  <div id="main">
+    <aside id="bin">
+      <section>
+        <h2>Sources</h2>
+        <ul id="sourceList"></ul>
+      </section>
+      <section>
+        <h2>Add a source</h2>
+        <div id="addsource">
+          <input type="text" id="pathInput" placeholder="path to a clip">
+          <button id="addBtn">Add</button>
+        </div>
+      </section>
+      <section>
+        <h2>In folder</h2>
+        <ul id="folderList"></ul>
+      </section>
+    </aside>
+    <div id="center">
+      <div id="preview">
+        <div id="previewBox">
+          <div id="previewTime" class="mono">0:00.00</div>
+        </div>
+      </div>
+      <div id="transport">
+        <button data-action="start" title="Start">|&lt;</button>
+        <button data-action="prevframe" title="One frame back">&lt;</button>
+        <button data-action="play" id="playBtn" title="Play/Pause">Play</button>
+        <button data-action="nextframe" title="One frame forward">&gt;</button>
+        <button data-action="end" title="End">&gt;|</button>
+        <span id="timecode" class="mono">0:00.00 / 0:00.00</span>
+        <span class="spacer"></span>
+        <button data-action="split" title="Split (S)">Split</button>
+        <button data-action="remove" title="Remove (Delete)">Remove</button>
+        <button data-action="zoomout" title="Zoom out (-)">−</button>
+        <button data-action="zoomin" title="Zoom in (+)">+</button>
+        <button data-action="fit" title="Fit (F)">Fit</button>
+      </div>
+      <div id="timelineWrap">
+        <div id="timelineInner">
+          <div id="ruler"></div>
+          <div id="track"></div>
+        </div>
+      </div>
+    </div>
+    <aside id="inspector">
+      <h2>Cut</h2>
+      <div id="inspectorBody"><p class="muted">No cut selected.</p></div>
+    </aside>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var state = {
+    file: null, dir: null, version: null, project: null, timeline: [], duration: 0,
+    selected: null, playhead: 0, playing: false, playbackCut: null,
+    pxPerSecond: 60, dragging: null, liveOverride: null,
+    videos: new Map(), lastIn: new Map(), mediaFiles: [],
+  };
+
+  var el = {
+    projName: document.getElementById('projName'),
+    filePath: document.getElementById('filePath'),
+    status: document.getElementById('status'),
+    sourceList: document.getElementById('sourceList'),
+    folderList: document.getElementById('folderList'),
+    pathInput: document.getElementById('pathInput'),
+    addBtn: document.getElementById('addBtn'),
+    previewBox: document.getElementById('previewBox'),
+    previewTime: document.getElementById('previewTime'),
+    playBtn: document.getElementById('playBtn'),
+    timecode: document.getElementById('timecode'),
+    timelineWrap: document.getElementById('timelineWrap'),
+    ruler: document.getElementById('ruler'),
+    track: document.getElementById('track'),
+    inspectorBody: document.getElementById('inspectorBody'),
+    exportBtn: document.getElementById('exportBtn'),
+    transport: document.getElementById('transport'),
+  };
+
+  // ---- small helpers ----------------------------------------------
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function round3(v) { return Math.round(v * 1000) / 1000; }
+
+  function formatTime(t) {
+    if (t < 0 || !isFinite(t)) t = 0;
+    var m = Math.floor(t / 60);
+    var s = t - m * 60;
+    return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2);
+  }
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function slugify(name) {
+    var s = (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return s || 'export';
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function setStatus(message, level) {
+    el.status.textContent = message || '';
+    el.status.className = level || '';
+  }
+
+  function fps() {
+    return (state.project && state.project.output && state.project.output.fps) || 30;
+  }
+
+  function sourceById(id) {
+    return (state.project.sources || []).find(function (s) { return s.id === id; });
+  }
+
+  // ---- server calls -------------------------------------------------
+
+  function api(path, opts) {
+    return fetch(path, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+      });
+    });
+  }
+
+  function adopt(data, keepPlayheadAndSelection) {
+    var playhead = state.playhead, selected = state.selected;
+    state.version = data.version;
+    state.file = data.file;
+    state.dir = data.dir;
+    state.project = data.project;
+    state.timeline = data.timeline;
+    state.duration = data.duration;
+    if (keepPlayheadAndSelection) {
+      state.playhead = clamp(playhead, 0, state.duration);
+      state.selected = state.timeline.some(function (e) { return e.cut === selected; }) ? selected : null;
+    } else if (!state.timeline.some(function (e) { return e.cut === state.selected; })) {
+      state.selected = null;
+    }
+    state.liveOverride = null;
+    render();
+  }
+
+  function loadProject() {
+    return api('/api/project').then(function (data) { adopt(data, false); });
+  }
+
+  function loadMedia() {
+    return api('/api/media').then(function (data) {
+      state.mediaFiles = data.files;
+      renderFolder();
+    }).catch(function () {});
+  }
+
+  function sendChanges(changes) {
+    return api('/api/changes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ by: 'person', changes: changes }),
+    }).then(function (data) {
+      adopt(data, true);
+      setStatus('');
+      loadMedia();
+    }).catch(function (e) {
+      setStatus(e.message, 'error');
+    });
+  }
+
+  // ---- rendering ------------------------------------------------------
+
+  function render() {
+    el.projName.textContent = state.project ? state.project.name : '—';
+    el.filePath.textContent = state.file || '';
+    renderSources();
+    renderFolder();
+    renderTimeline();
+    renderInspector();
+    syncVideos();
+    updateTimecode();
+    if (state.timeline.length > 60) {
+      setStatus('Over 60 cuts: browsers cap live media elements; playback may not keep up.', 'warn');
+    }
+  }
+
+  function renderSources() {
+    el.sourceList.innerHTML = '';
+    (state.project ? state.project.sources : []).forEach(function (s) {
+      var li = document.createElement('li');
+      var name = document.createElement('span');
+      name.className = 'rowname';
+      name.textContent = s.name;
+      var meta = document.createElement('span');
+      meta.className = 'rowmeta';
+      meta.textContent = s.duration.toFixed(1) + 's';
+      var remove = document.createElement('button');
+      remove.className = 'remove-btn';
+      remove.textContent = '✕';
+      remove.title = 'Remove source';
+      remove.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        sendChanges([{ op: 'remove_source', source: s.id }]);
+      });
+      li.appendChild(name);
+      li.appendChild(meta);
+      li.appendChild(remove);
+      li.addEventListener('click', function () {
+        sendChanges([{ op: 'add_cut', source: s.id }]);
+      });
+      el.sourceList.appendChild(li);
+    });
+  }
+
+  function renderFolder() {
+    el.folderList.innerHTML = '';
+    state.mediaFiles.forEach(function (f) {
+      var li = document.createElement('li');
+      var name = document.createElement('span');
+      name.className = 'rowname';
+      name.textContent = f.name;
+      li.appendChild(name);
+      if (f.source) {
+        li.className = 'added';
+        var badge = document.createElement('span');
+        badge.className = 'rowmeta mono';
+        badge.textContent = f.source;
+        li.appendChild(badge);
+      } else {
+        li.addEventListener('click', function () {
+          sendChanges([{ op: 'add_source', path: f.path }]);
+        });
+      }
+      el.folderList.appendChild(li);
+    });
+  }
+
+  function computeTimeline(cuts, override) {
+    var at = 0, out = [];
+    cuts.forEach(function (c) {
+      var cin = c.in, cout = c.out;
+      if (override && override.cut === c.id) { cin = override.in; cout = override.out; }
+      var d = round3(cout - cin);
+      out.push({ cut: c.id, source: c.source, in: cin, out: cout, start: round3(at), end: round3(at + d), duration: d });
+      at += d;
+    });
+    return out;
+  }
+
+  function liveTimeline() {
+    return state.liveOverride ? computeTimeline(state.project.cuts, state.liveOverride) : state.timeline;
+  }
+
+  function pickTickInterval(px) {
+    var options = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+    for (var i = 0; i < options.length; i++) {
+      if (options[i] * px >= 60) return options[i];
+    }
+    return options[options.length - 1];
+  }
+
+  function renderTimeline() {
+    var tl = liveTimeline();
+    var px = state.pxPerSecond;
+    var duration = tl.length ? tl[tl.length - 1].end : 0;
+    var width = Math.max(duration * px, el.timelineWrap.clientWidth);
+
+    el.ruler.style.width = width + 'px';
+    el.track.style.width = width + 'px';
+    el.ruler.innerHTML = '';
+    var interval = pickTickInterval(px);
+    for (var t = 0; t <= duration + interval; t += interval) {
+      var tick = document.createElement('div');
+      tick.className = 'tick';
+      tick.style.left = Math.round(t * px) + 'px';
+      tick.textContent = formatTime(t);
+      el.ruler.appendChild(tick);
+    }
+
+    el.track.innerHTML = '';
+    tl.forEach(function (e) {
+      var block = document.createElement('div');
+      block.className = 'cut-block' + (e.cut === state.selected ? ' selected' : '');
+      block.style.left = (e.start * px) + 'px';
+      block.style.width = Math.max(e.duration * px, 4) + 'px';
+      block.dataset.cut = e.cut;
+      var src = sourceById(e.source);
+      var label = document.createElement('div');
+      label.className = 'cut-label';
+      label.textContent = (src ? src.name : e.source) + ' · ' + e.duration.toFixed(2) + 's';
+      block.appendChild(label);
+      var hl = document.createElement('div'); hl.className = 'handle handle-left';
+      var hr = document.createElement('div'); hr.className = 'handle handle-right';
+      block.appendChild(hl); block.appendChild(hr);
+      el.track.appendChild(block);
+    });
+
+    var line = document.createElement('div');
+    line.className = 'playhead-line';
+    line.style.left = (state.playhead * px) + 'px';
+    line.style.top = '0';
+    line.style.height = '100%';
+    el.track.appendChild(line);
+    var rulerLine = document.createElement('div');
+    rulerLine.className = 'playhead-line';
+    rulerLine.style.left = (state.playhead * px) + 'px';
+    el.ruler.appendChild(rulerLine);
+  }
+
+  function renderInspector() {
+    var entry = state.timeline.find(function (e) { return e.cut === state.selected; });
+    if (!entry) {
+      el.inspectorBody.innerHTML = '<p class="muted">No cut selected.</p>';
+      return;
+    }
+    var src = sourceById(entry.source);
+    el.inspectorBody.innerHTML =
+      '<div class="row"><span>Source</span><span>' + escapeHtml(src ? src.name : entry.source) + '</span></div>' +
+      '<div class="row"><label>In</label><input type="number" step="0.01" id="inField" value="' + entry.in + '"></div>' +
+      '<div class="row"><label>Out</label><input type="number" step="0.01" id="outField" value="' + entry.out + '"></div>' +
+      '<div class="row"><span>Duration</span><span>' + entry.duration.toFixed(3) + 's</span></div>' +
+      '<div class="row"><span>Position</span><span>' + entry.start.toFixed(3) + '–' + entry.end.toFixed(3) + 's</span></div>';
+    document.getElementById('inField').addEventListener('change', function (ev) {
+      sendChanges([{ op: 'trim', cut: entry.cut, in: parseFloat(ev.target.value) }]);
+    });
+    document.getElementById('outField').addEventListener('change', function (ev) {
+      sendChanges([{ op: 'trim', cut: entry.cut, out: parseFloat(ev.target.value) }]);
+    });
+  }
+
+  function updateTimecode() {
+    el.timecode.textContent = formatTime(state.playhead) + ' / ' + formatTime(state.duration);
+    el.previewTime.textContent = formatTime(state.playhead);
+    el.playBtn.textContent = state.playing ? 'Pause' : 'Play';
+  }
+
+  // ---- preview: one <video> per cut ------------------------------------
+
+  function syncVideos() {
+    var ids = {};
+    state.timeline.forEach(function (e) { ids[e.cut] = true; });
+    state.videos.forEach(function (elm, id) {
+      if (!ids[id]) { elm.remove(); state.videos.delete(id); state.lastIn.delete(id); }
+    });
+    state.timeline.forEach(function (e) {
+      var v = state.videos.get(e.cut);
+      if (!v) {
+        v = document.createElement('video');
+        v.preload = 'auto';
+        v.muted = true;
+        v.playsInline = true;
+        v.style.display = 'none';
+        v.src = '/media/' + e.source;
+        v.addEventListener('loadedmetadata', function () {
+          v.currentTime = state.lastIn.get(e.cut) != null ? state.lastIn.get(e.cut) : e.in;
+        });
+        el.previewBox.insertBefore(v, el.previewTime);
+        state.videos.set(e.cut, v);
+        state.lastIn.set(e.cut, e.in);
+      } else if (state.lastIn.get(e.cut) !== e.in) {
+        state.lastIn.set(e.cut, e.in);
+        if (v.readyState >= 1) v.currentTime = e.in;
+      }
+    });
+    var active = locate(state.playhead);
+    showOnly(active ? active.cut : null);
+  }
+
+  function showOnly(cutId) {
+    state.videos.forEach(function (v, id) { v.style.display = id === cutId ? '' : 'none'; });
+  }
+
+  function locate(t) {
+    var tl = state.timeline;
+    for (var i = 0; i < tl.length; i++) {
+      if (tl[i].start <= t && t < tl[i].end) return tl[i];
+    }
+    if (tl.length && t >= tl[tl.length - 1].end) return tl[tl.length - 1];
+    return null;
+  }
+
+  // ---- transport --------------------------------------------------------
+
+  function scrub(t) {
+    t = clamp(t, 0, state.duration);
+    state.playhead = t;
+    var entry = locate(t);
+    if (entry) {
+      var v = state.videos.get(entry.cut);
+      showOnly(entry.cut);
+      if (v) v.currentTime = entry.in + (t - entry.start);
+    }
+    updateTimecode();
+    updatePlayheadLine();
+  }
+
+  function updatePlayheadLine() {
+    var lines = el.track.querySelectorAll('.playhead-line');
+    var px = state.pxPerSecond;
+    lines.forEach(function (l) { l.style.left = (state.playhead * px) + 'px'; });
+    var rulerLines = el.ruler.querySelectorAll('.playhead-line');
+    rulerLines.forEach(function (l) { l.style.left = (state.playhead * px) + 'px'; });
+  }
+
+  function play() {
+    if (!state.timeline.length) return;
+    var entry = locate(state.playhead) || state.timeline[0];
+    state.playbackCut = entry.cut;
+    var v = state.videos.get(entry.cut);
+    if (!v) return;
+    showOnly(entry.cut);
+    v.currentTime = entry.in + Math.max(0, state.playhead - entry.start);
+    v.muted = false;
+    state.playing = true;
+    v.play();
+    updateTimecode();
+    requestAnimationFrame(tick);
+  }
+
+  function pause() {
+    state.playing = false;
+    var entry = state.timeline.find(function (e) { return e.cut === state.playbackCut; });
+    if (entry) { var v = state.videos.get(entry.cut); if (v) v.pause(); }
+    updateTimecode();
+  }
+
+  function tick() {
+    if (!state.playing) return;
+    var entry = state.timeline.find(function (e) { return e.cut === state.playbackCut; });
+    if (!entry) { state.playing = false; return; }
+    var v = state.videos.get(entry.cut);
+    var t = entry.start + (v.currentTime - entry.in);
+    state.playhead = t;
+    updateTimecode();
+    updatePlayheadLine();
+    if (v.currentTime >= entry.out - 0.02) {
+      v.pause();
+      v.currentTime = entry.in;
+      var idx = state.timeline.indexOf(entry);
+      var next = state.timeline[idx + 1];
+      if (next) {
+        state.playbackCut = next.cut;
+        var nv = state.videos.get(next.cut);
+        showOnly(next.cut);
+        nv.muted = false;
+        nv.currentTime = next.in;
+        nv.play();
+      } else {
+        state.playing = false;
+        state.playhead = entry.end;
+        updateTimecode();
+        updatePlayheadLine();
+        return;
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function stepFrame(dir, big) {
+    var step = big ? 1 : (1 / fps());
+    scrub(state.playhead + dir * step);
+  }
+
+  function doSplit() {
+    var entry = locate(state.playhead);
+    if (!entry) return;
+    var at = entry.in + (state.playhead - entry.start);
+    sendChanges([{ op: 'split', cut: entry.cut, at: at }]);
+  }
+
+  function doRemove() {
+    if (!state.selected) return;
+    sendChanges([{ op: 'remove_cut', cut: state.selected }]);
+  }
+
+  function zoom(factor) {
+    state.pxPerSecond = clamp(state.pxPerSecond * factor, 5, 2000);
+    renderTimeline();
+  }
+
+  function fitZoom() {
+    if (state.duration > 0) {
+      state.pxPerSecond = clamp(el.timelineWrap.clientWidth / state.duration, 5, 2000);
+    }
+    renderTimeline();
+  }
+
+  // ---- dragging: scrub, trim, reorder -----------------------------------
+
+  function xToTime(clientX) {
+    var rect = el.track.getBoundingClientRect();
+    return Math.max(0, (clientX - rect.left) / state.pxPerSecond);
+  }
+
+  function startScrubDrag(ev) {
+    state.dragging = 'scrub';
+    var move = function (e) { scrub(xToTime(e.clientX)); };
+    move(ev);
+    var up = function () {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      state.dragging = null;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  function selectCut(cutId) {
+    state.selected = cutId;
+    renderTimeline();
+    renderInspector();
+  }
+
+  function startTrim(cutId, side, ev) {
+    ev.stopPropagation();
+    var cut = state.project.cuts.find(function (c) { return c.id === cutId; });
+    var src = sourceById(cut.source);
+    var startX = ev.clientX, startIn = cut.in, startOut = cut.out;
+    state.dragging = 'trim';
+    var move = function (e) {
+      var dx = (e.clientX - startX) / state.pxPerSecond;
+      var override = { cut: cutId, in: startIn, out: startOut };
+      var v = state.videos.get(cutId);
+      if (side === 'in') {
+        override.in = clamp(round3(startIn + dx), 0, startOut - 0.02);
+        if (v) v.currentTime = override.in;
+      } else {
+        override.out = clamp(round3(startOut + dx), startIn + 0.02, src.duration + 0.05);
+        if (v) v.currentTime = override.out;
+      }
+      state.liveOverride = override;
+      renderTimeline();
+    };
+    var up = function (e) {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      state.dragging = null;
+      var dx = (e.clientX - startX) / state.pxPerSecond;
+      var change = { op: 'trim', cut: cutId };
+      if (side === 'in') change.in = clamp(round3(startIn + dx), 0, startOut - 0.02);
+      else change.out = clamp(round3(startOut + dx), startIn + 0.02, src.duration + 0.05);
+      sendChanges([change]);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  function startReorder(cutId, block, ev) {
+    ev.stopPropagation();
+    var originalIndex = state.project.cuts.findIndex(function (c) { return c.id === cutId; });
+    var dropIndex = originalIndex;
+    var startX = ev.clientX;
+    var origLeft = parseFloat(block.style.left);
+    block.classList.add('dragging');
+    state.dragging = 'reorder';
+    var others = state.timeline.filter(function (e) { return e.cut !== cutId; });
+    var move = function (e) {
+      var dx = e.clientX - startX;
+      block.style.left = (origLeft + dx) + 'px';
+      var centerX = origLeft + dx + block.offsetWidth / 2;
+      dropIndex = others.length;
+      for (var i = 0; i < others.length; i++) {
+        var mid = (others[i].start + others[i].end) / 2 * state.pxPerSecond;
+        if (centerX < mid) { dropIndex = i; break; }
+      }
+    };
+    var up = function () {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      block.classList.remove('dragging');
+      state.dragging = null;
+      if (dropIndex !== originalIndex) sendChanges([{ op: 'move', cut: cutId, to: dropIndex }]);
+      else renderTimeline();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  el.track.addEventListener('mousedown', function (ev) {
+    var block = ev.target.closest('.cut-block');
+    if (!block) { startScrubDrag(ev); return; }
+    var cutId = block.dataset.cut;
+    selectCut(cutId);
+    if (ev.target.classList.contains('handle-left')) startTrim(cutId, 'in', ev);
+    else if (ev.target.classList.contains('handle-right')) startTrim(cutId, 'out', ev);
+    else startReorder(cutId, block, ev);
+  });
+  el.ruler.addEventListener('mousedown', startScrubDrag);
+
+  // ---- controls ------------------------------------------------------
+
+  el.transport.addEventListener('click', function (ev) {
+    var action = ev.target.dataset.action;
+    if (!action) return;
+    switch (action) {
+      case 'start': scrub(0); break;
+      case 'end': scrub(state.duration); break;
+      case 'prevframe': stepFrame(-1, false); break;
+      case 'nextframe': stepFrame(1, false); break;
+      case 'play': state.playing ? pause() : play(); break;
+      case 'split': doSplit(); break;
+      case 'remove': doRemove(); break;
+      case 'zoomin': zoom(1.4); break;
+      case 'zoomout': zoom(1 / 1.4); break;
+      case 'fit': fitZoom(); break;
+    }
+  });
+
+  el.addBtn.addEventListener('click', function () {
+    var path = el.pathInput.value.trim();
+    if (!path) return;
+    sendChanges([{ op: 'add_source', path: path } ]).then(function () { el.pathInput.value = ''; });
+  });
+  el.pathInput.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') el.addBtn.click();
+  });
+
+  el.exportBtn.addEventListener('click', function () {
+    var def = state.dir && state.project ? (state.dir + '/' + slugify(state.project.name) + '.mp4') : '';
+    var path = window.prompt('Export to:', def);
+    if (path === null) return;
+    setStatus('Exporting…');
+    api('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path }),
+    }).then(function (data) {
+      setStatus('Exported ' + data.path + ' (' + formatBytes(data.bytes) + ')');
+    }).catch(function (e) {
+      setStatus(e.message, 'error');
+    });
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    switch (ev.key) {
+      case ' ': ev.preventDefault(); state.playing ? pause() : play(); break;
+      case 'ArrowLeft': ev.preventDefault(); stepFrame(-1, ev.shiftKey); break;
+      case 'ArrowRight': ev.preventDefault(); stepFrame(1, ev.shiftKey); break;
+      case 'Home': scrub(0); break;
+      case 'End': scrub(state.duration); break;
+      case 's': case 'S': doSplit(); break;
+      case 'Delete': case 'Backspace': doRemove(); break;
+      case '-': zoom(1 / 1.4); break;
+      case '+': case '=': zoom(1.4); break;
+      case 'f': case 'F': fitZoom(); break;
+    }
+  });
+
+  window.addEventListener('resize', function () { if (!state.dragging) renderTimeline(); });
+
+  // ---- polling: an agent's changes appear without a reload ---------------
+
+  setInterval(function () {
+    if (state.dragging) return;
+    api('/api/project').then(function (data) {
+      if (String(data.version) !== String(state.version)) adopt(data, true);
+    }).catch(function () {});
+  }, 1500);
+
+  loadProject().then(loadMedia);
+})();
+</script>
+</body>
+</html>

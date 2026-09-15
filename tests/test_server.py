@@ -61,16 +61,17 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(payload["project"]["sources"][0]["id"], "s1")
 
     def test_a_batch_and_a_failing_batch(self):
-        body = json.dumps({"by": "agent", "changes": [{"op": "add_cut", "source": "s1"}]})
+        body = json.dumps({"by": "agent", "changes": [{"op": "add_clip", "source": "s1", "with_audio": False}]})
         resp, data = self.request("POST", "/api/changes", body=body)
         self.assertEqual(resp.status, 200)
         payload = json.loads(data)
-        self.assertEqual(payload["results"], [{"cut": "c1"}])
-        self.assertEqual(payload["timeline"][0]["cut"], "c1")
+        self.assertEqual(payload["results"], [{"clip": "c1", "sibling": None}])
+        self.assertEqual(payload["timeline"][0]["clip"], "c1")
+        self.assertEqual(payload["video_segments"][0]["source"], "s1")
 
         with open(self.project_path, encoding="utf-8") as fh:
             before = fh.read()
-        resp, data = self.request("POST", "/api/changes", body=json.dumps({"changes": [{"op": "trim", "cut": "nope"}]}))
+        resp, data = self.request("POST", "/api/changes", body=json.dumps({"changes": [{"op": "trim", "clip": "nope"}]}))
         self.assertEqual(resp.status, 400)
         self.assertIn("error", json.loads(data))
         with open(self.project_path, encoding="utf-8") as fh:

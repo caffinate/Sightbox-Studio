@@ -322,6 +322,14 @@ class VideoSegmentsAndDuration(unittest.TestCase):
         # 4, since v1.in=0/v1.start=0), not from "where v1 left off" before being covered
         self.assertEqual((segs[2]["in"], segs[2]["out"]), (4.0, 5.0))
 
+    def test_video_segments_carry_the_winning_clip_id(self):
+        r1 = self.p.apply({"op": "add_clip", "source": "s1", "in": 0, "out": 5, "with_audio": False})
+        self.p.apply({"op": "add_track", "kind": "video"})
+        r2 = self.p.apply({"op": "add_clip", "source": "s1", "in": 10, "out": 12, "video_track": "v2",
+                            "with_audio": False, "start": 2.0})  # fully inside r1's [0,5) span
+        segs = self.p.video_segments()
+        self.assertEqual([s["clip"] for s in segs], [r1["clip"], r2["clip"], r1["clip"]])
+
     def test_uncovered_interval_is_filler(self):
         self.p.apply({"op": "add_clip", "source": "s1", "in": 0, "out": 1, "with_audio": False})
         self.p.apply({"op": "add_clip", "source": "s1", "in": 0, "out": 1, "with_audio": False, "start": 3.0})

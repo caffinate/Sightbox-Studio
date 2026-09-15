@@ -73,10 +73,10 @@ class McpProtocolTests(unittest.TestCase):
 
     def test_a_change_error_comes_back_as_is_error_not_a_json_rpc_error(self):
         resp = self.handler.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {
-            "name": "changes_apply", "arguments": {"changes": [{"op": "trim", "cut": "nope"}]}}})
+            "name": "changes_apply", "arguments": {"changes": [{"op": "trim", "clip": "nope"}]}}})
         self.assertNotIn("error", resp)
         self.assertTrue(resp["result"]["isError"])
-        self.assertIn("no cut", resp["result"]["content"][0]["text"])
+        self.assertIn("no clip", resp["result"]["content"][0]["text"])
 
     def test_an_unknown_tool_is_also_is_error(self):
         resp = self.handler.handle({"jsonrpc": "2.0", "id": 8, "method": "tools/call",

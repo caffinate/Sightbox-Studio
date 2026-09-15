@@ -288,7 +288,7 @@ class Project:
         if total <= 0:
             return []
         if not video_clips:
-            return [{"kind": "filler", "source": None, "in": None, "out": None,
+            return [{"kind": "filler", "source": None, "clip": None, "in": None, "out": None,
                      "start": 0.0, "end": total, "duration": total}]
         breakpoints = sorted({0.0, total} | {c["start"] for c in video_clips} | {self._clip_end(c) for c in video_clips})
         segments = []
@@ -300,19 +300,21 @@ class Project:
             if covering:
                 winner = max(covering, key=lambda c: self.track_priority(c["track"]))
                 segments.append({
-                    "kind": "clip", "source": winner["source"],
+                    "kind": "clip", "source": winner["source"], "clip": winner["id"],
                     "in": round(winner["in"] + (a - winner["start"]), 3),
                     "out": round(winner["in"] + (b - winner["start"]), 3),
                     "start": round(a, 3), "end": round(b, 3), "duration": round(b - a, 3),
                 })
             else:
-                segments.append({"kind": "filler", "source": None, "in": None, "out": None,
+                segments.append({"kind": "filler", "source": None, "clip": None, "in": None, "out": None,
                                   "start": round(a, 3), "end": round(b, 3), "duration": round(b - a, 3)})
         merged = []
         for seg in segments:
             prev = merged[-1] if merged else None
-            contiguous = prev and prev["kind"] == seg["kind"] and prev.get("source") == seg.get("source") and (
-                seg["kind"] == "filler" or abs(prev["out"] - seg["in"]) < 1e-9)
+            # same clip id is a strictly stronger (and simpler) test than "same source and
+            # contiguous": two adjacent intervals winning to the same clip are always
+            # contiguous by construction, so this also subsumes the old adjacency check
+            contiguous = prev and prev["kind"] == seg["kind"] and prev.get("clip") == seg.get("clip")
             if contiguous:
                 prev["out"], prev["end"] = seg["out"], seg["end"]
                 prev["duration"] = round(prev["end"] - prev["start"], 3)

@@ -31,8 +31,8 @@ def cmd_add(args):
     for f, r in zip(args.files, results):
         print(f"{r['source']}{' (already added)' if r.get('existing') else ''}  {f}")
     if args.cut:
-        cut_changes = [{"op": "add_cut", "source": r["source"]} for r in results]
-        store.apply(cut_changes, by="cli", probe=media.probe)
+        clip_changes = [{"op": "add_clip", "source": r["source"]} for r in results]
+        store.apply(clip_changes, by="cli", probe=media.probe)
 
 
 def cmd_apply(args):
@@ -47,13 +47,26 @@ def cmd_apply(args):
 def cmd_show(args):
     store = Store(args.project)
     project = store.load()
-    tl = project.timeline()
-    if not tl:
-        print("(no cuts)")
+    segments = project.video_segments()
+    if not segments:
+        print("(no clips)")
         return
-    print(f"{'cut':<5}{'source':<8}{'in':>9}{'out':>9}{'start':>9}{'end':>9}")
-    for e in tl:
-        print(f"{e['cut']:<5}{e['source']:<8}{e['in']:>9.3f}{e['out']:>9.3f}{e['start']:>9.3f}{e['end']:>9.3f}")
+    print("Picture (resolved, what actually plays):")
+    print(f"  {'start':>8}{'end':>8}  {'source':<8}{'in':>9}{'out':>9}")
+    for s in segments:
+        if s["kind"] == "clip":
+            print(f"  {s['start']:>8.3f}{s['end']:>8.3f}  {s['source']:<8}{s['in']:>9.3f}{s['out']:>9.3f}")
+        else:
+            print(f"  {s['start']:>8.3f}{s['end']:>8.3f}  (black)")
+    print("\nClips by track:")
+    for t in project.tracks:
+        clips = sorted(project.clips_on(t["id"]), key=lambda c: c["start"])
+        if not clips:
+            continue
+        print(f"  {t['id']} ({t['kind']}):")
+        for c in clips:
+            link = f"  link={c['link']}" if c.get("link") else ""
+            print(f"    {c['id']:<5}{c['source']:<8}{c['in']:>8.3f}{c['out']:>8.3f}{c['start']:>8.3f}{link}")
 
 
 def cmd_export(args):

@@ -2,6 +2,8 @@
 
 Written 15 September 2026, in the SightOps session that ruled the editor a separate project. Canonical copy: this file. If a copy is filed in Notion later, this file becomes the pointer, per the canonical-copies rule.
 
+**Superseded in part.** This brief's "cuts only, one track" decision (below, under *Decisions already made*) held through the single-track build. Nathan then asked for multi-track editing; `MULTITRACK-BRIEF.md` is that brief, written and critiqued the same way this one was, and it overrides "cuts only, one track" specifically. Everything else here — the boundaries, the proven ffmpeg techniques this file's export graph is built from, the vocabulary for a source and a batch, the server/CLI/MCP shape — still holds and is assumed by `MULTITRACK-BRIEF.md` rather than repeated in it. Read this file first, then `MULTITRACK-BRIEF.md`, for the current state of the schema and ops.
+
 ## What it is
 
 A simple timeline video editor with one write path for a person and an agent. One track, cuts only. The cut list is a JSON file on disk and is the editor's whole state. A page in the browser is a view over it. A local Python server applies changes to it, serves the media, and runs ffmpeg. An agent changes it the same way a person does, through the same server, and gets eyes on the footage through ffmpeg: single frames, contact sheets, scene changes, silences. Export is a real H.264 MP4 from ffmpeg.

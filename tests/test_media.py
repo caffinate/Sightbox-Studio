@@ -19,6 +19,7 @@ class MediaTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="studio-media-test-")
         cls.a, cls.b, cls.c = ffmpeg_proofs.make_clips(cls.tmp)
+        cls.tone = ffmpeg_proofs.make_tone(cls.tmp, duration=4.0)
 
     @classmethod
     def tearDownClass(cls):
@@ -36,39 +37,56 @@ class MediaTests(unittest.TestCase):
         with self.assertRaises(ChangeError):
             media.probe(os.path.join(self.tmp, "nope.mp4"))
 
-    def _three_cut_project(self):
+    def _three_clip_project(self):
         project = Project(name="Test", output={"width": 1280, "height": 720, "fps": 30.0})
-        project.sources = [
-            {"id": "s1", "path": self.a, "name": "a.mp4", "duration": 4.0,
-             "width": 1280, "height": 720, "fps": 30.0, "has_audio": True},
-            {"id": "s2", "path": self.b, "name": "b.mov", "duration": 3.0,
-             "width": 640, "height": 360, "fps": 25.0, "has_audio": False},
-        ]
-        project.cuts = [
-            {"id": "c1", "source": "s1", "in": 0.5, "out": 2.5},
-            {"id": "c2", "source": "s2", "in": 0.0, "out": 1.5},
-            {"id": "c3", "source": "s1", "in": 3.0, "out": 4.0},
-        ]
+        project.apply({"op": "add_source", "path": self.a}, probe=lambda p: {
+            "duration": 4.0, "width": 1280, "height": 720, "fps": 30.0, "has_audio": True})
+        project.apply({"op": "add_source", "path": self.b}, probe=lambda p: {
+            "duration": 3.0, "width": 640, "height": 360, "fps": 25.0, "has_audio": False})
+        project.apply({"op": "add_clip", "source": "s1", "in": 0.5, "out": 2.5})
+        project.apply({"op": "add_clip", "source": "s2", "in": 0.0, "out": 1.5})
+        project.apply({"op": "add_clip", "source": "s1", "in": 3.0, "out": 4.0})
         return project
 
     def test_export_duration_within_a_tenth_of_a_second(self):
         out = os.path.join(self.tmp, "out.mp4")
-        result = media.export(self._three_cut_project(), lambda p: p, out)
+        result = media.export(self._three_clip_project(), lambda p: p, out)
         self.assertTrue(os.path.exists(out))
         self.assertAlmostEqual(result["duration"], 4.5, delta=0.1)
         info = media.probe(out)
         self.assertEqual((info["width"], info["height"], info["has_audio"]), (1280, 720, True))
 
-    def test_export_needs_cuts(self):
+    def test_export_needs_clips(self):
         empty = Project(name="Empty", output={"width": 1280, "height": 720, "fps": 30.0})
         with self.assertRaises(ChangeError):
             media.export(empty, lambda p: p, os.path.join(self.tmp, "x.mp4"))
 
     def test_export_needs_output(self):
-        no_output = self._three_cut_project()
+        no_output = self._three_clip_project()
         no_output.output = None
         with self.assertRaises(ChangeError):
             media.export(no_output, lambda p: p, os.path.join(self.tmp, "y.mp4"))
+
+    def test_export_decouples_video_and_audio_across_a_track_gap(self):
+        # video: a real clip [0,1) then a filler gap [1,2) (nothing on any video track);
+        # audio: one continuous clip spanning the whole [0,2) -- built by adding it linked
+        # to a throwaway video clip on a scratch track, then removing just the video half,
+        # exactly how a real edit ends up with an audio-only clip (every source has video).
+        project = Project(name="Gap", output={"width": 1280, "height": 720, "fps": 30.0})
+        project.apply({"op": "add_source", "path": self.a}, probe=lambda p: {
+            "duration": 4.0, "width": 1280, "height": 720, "fps": 30.0, "has_audio": True})
+        project.apply({"op": "add_source", "path": self.tone}, probe=lambda p: {
+            "duration": 4.0, "width": 1280, "height": 720, "fps": 30.0, "has_audio": True})
+        project.apply({"op": "add_clip", "source": "s1", "in": 0.0, "out": 1.0, "with_audio": False})
+        project.apply({"op": "add_track", "kind": "video"})
+        r = project.apply({"op": "add_clip", "source": "s2", "in": 0.0, "out": 2.0,
+                           "video_track": "v2", "start": 0.0})
+        project.apply({"op": "remove_clip", "clip": r["clip"]})
+
+        out = os.path.join(self.tmp, "gap.mp4")
+        result = media.export(project, lambda p: p, out)
+        self.assertAlmostEqual(result["duration"], 2.0, delta=0.1)
+        self.assertEqual(media.silences(out, has_audio=True), [])  # audio plays straight through the gap
 
     def test_frame_is_a_jpeg(self):
         data = media.frame(self.a, 2.5)

@@ -3,12 +3,18 @@
 
 Every call is an argument list through `subprocess`, never a shell string. `FFMPEG`
 and `FFPROBE` come from the environment variables `STUDIO_FFMPEG` and `STUDIO_FFPROBE`
-when set, else `ffmpeg` and `ffprobe` on PATH. This module knows nothing about the
-cut list beyond what a caller hands it: `export` takes a `Project` and a `resolve`
-function so a source's stored path (possibly relative) becomes a real file path.
+when set, else `ffmpeg` and `ffprobe` on PATH. This module knows nothing about the cut
+list beyond what a caller hands it: `export` takes a `Project` and a `resolve` function
+so a source's stored path (possibly relative) becomes a real file path.
 
-The proven commands, timings and expected outputs are in BRIEF.md and reproduced on
-synthetic clips by `tools/ffmpeg_proofs.py`.
+The proven commands, timings and expected outputs are in BRIEF.md and MULTITRACK-BRIEF.md,
+reproduced on synthetic clips by `tools/ffmpeg_proofs.py`. `export` is the v2 multi-track
+graph: `Project.video_segments()` (already priority-resolved, real clips and black filler)
+becomes a video-only concat; every audio clip on every audio track is mixed separately
+(`amix`, not concatenated) and delayed into position. Both pipelines snap every timing to
+the SAME output-frame grid before building any ffmpeg args, so a cut lands at the same
+instant on both -- ffmpeg_proofs.py proved this matters: computed independently, video's
+frame-quantized timing and audio's millisecond-exact timing drift apart.
 """
 
 from __future__ import annotations
@@ -72,34 +78,64 @@ def probe(path: str) -> dict:
             "fps": round(fps, 3), "has_audio": has_audio}
 
 
+def _frame_snap(t: float, fps: float) -> int:
+    """The output-frame grid both the video and audio pipelines share below."""
+    return round(t * fps)
+
+
 def export(project: Project, resolve: Resolve, out_path: str, preset: str = "medium") -> dict:
-    """The proven export graph, verbatim, built from the project's cuts and output."""
-    if not project.cuts:
+    """The proven v2 export graph: a video-only concat of Project.video_segments()
+    (already priority-resolved across tracks), plus every audio clip mixed separately
+    and delayed into position, both pipelines sharing one frame-snapped clock."""
+    duration = project.duration()
+    if duration <= 0:
         raise ChangeError("nothing to export: the cut list is empty")
     if not project.output:
         raise ChangeError("nothing to export: no output size is set")
     width, height, fps = project.output["width"], project.output["height"], project.output["fps"]
+
     args = [FFMPEG, "-hide_banner", "-v", "error", "-y"]
-    graph = []
-    for i, c in enumerate(project.cuts):
-        source = project.source(c["source"])
-        path = resolve(source["path"])
-        duration = round(c["out"] - c["in"], 3)
-        args += ["-ss", f"{c['in']:.3f}", "-t", f"{duration:.3f}", "-i", path]
-        graph.append(
-            f"[{i}:v]setpts=PTS-STARTPTS,fps={fps:g},"
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v{i}]"
-        )
-        if source.get("has_audio"):
-            graph.append(f"[{i}:a]asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a{i}]")
+    vgraph, n = [], 0
+    for seg in project.video_segments():
+        frames = _frame_snap(seg["end"], fps) - _frame_snap(seg["start"], fps)
+        if frames <= 0:
+            continue  # a degenerate sub-frame interval: merged away by dropping it
+        d = frames / fps
+        if seg["kind"] == "clip":
+            path = resolve(project.source(seg["source"])["path"])
+            args += ["-ss", f"{seg['in']:.3f}", "-t", f"{d:.3f}", "-i", path]
         else:
-            graph.append(f"anullsrc=r=48000:cl=stereo:d={duration:.3f}[a{i}]")
-    n = len(project.cuts)
-    graph.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[v][a]")
-    args += ["-filter_complex", ";".join(graph), "-map", "[v]", "-map", "[a]",
-             "-c:v", "libx264", "-preset", preset, "-crf", "18", "-pix_fmt", "yuv420p",
-             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out_path]
+            args += ["-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r={fps:g}:d={d:.3f}"]
+        vgraph.append(
+            f"[{n}:v]setpts=PTS-STARTPTS,fps={fps:g},"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v{n}]"
+        )
+        n += 1
+    vgraph.append("".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[v]")
+
+    audio_clips = [c for c in project.clips if project.track(c["track"])["kind"] == "audio"]
+    agraph, labels = [], []
+    for j, c in enumerate(audio_clips):
+        idx = n + j
+        path = resolve(project.source(c["source"])["path"])
+        d = c["out"] - c["in"]
+        args += ["-ss", f"{c['in']:.3f}", "-t", f"{d:.3f}", "-i", path]
+        delay_ms = round(_frame_snap(c["start"], fps) / fps * 1000)
+        agraph.append(
+            f"[{idx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+            f"adelay={delay_ms}:all=1[a{j}]"
+        )
+        labels.append(f"[a{j}]")
+    pad_idx = n + len(audio_clips)
+    args += ["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={duration:.3f}"]
+    labels.append(f"[{pad_idx}:a]")
+    agraph.append("".join(labels) + f"amix=inputs={len(labels)}:duration=longest:normalize=0[amix]")
+    agraph.append("[amix]alimiter=limit=0.95[a]")
+
+    args += ["-filter_complex", ";".join(vgraph + agraph), "-map", "[v]", "-map", "[a]",
+             "-t", f"{duration:.3f}", "-c:v", "libx264", "-preset", preset, "-crf", "18",
+             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out_path]
     t0 = time.time()
     p = _run(args)
     seconds = time.time() - t0

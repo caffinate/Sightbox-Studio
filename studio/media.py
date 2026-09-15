@@ -1,4 +1,5 @@
-"""ffprobe and ffmpeg: probe and export. Frame, sheet, scenes and silences come in build order 4.
+"""ffprobe and ffmpeg: probe, export, and an agent's eyes on the footage
+(frame, sheet, scenes, silences).
 
 Every call is an argument list through `subprocess`, never a shell string. `FFMPEG`
 and `FFPROBE` come from the environment variables `STUDIO_FFMPEG` and `STUDIO_FFPROBE`
@@ -14,9 +15,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
+from typing import Optional
 
 from .project import ChangeError, Project, Resolve
 
@@ -104,3 +107,68 @@ def export(project: Project, resolve: Resolve, out_path: str, preset: str = "med
         _fail(args, p)
     return {"path": out_path, "bytes": os.path.getsize(out_path),
             "seconds": round(seconds, 3), "duration": probe(out_path)["duration"]}
+
+
+def frame(path: str, t: float, width: int = 640) -> bytes:
+    """A single JPEG frame at source time t."""
+    args = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", path, "-frames:v", "1",
+            "-vf", f"scale={width}:-2", "-f", "image2", "-c:v", "mjpeg", "-q:v", "3", "pipe:1"]
+    p = _run(args)
+    if p.returncode != 0 or not p.stdout:
+        _fail(args, p)
+    return p.stdout
+
+
+def sheet(path: str, duration: float, cols: int = 6, rows: int = 5, width: int = 1920) -> tuple:
+    """A contact sheet JPEG with timestamps burnt in, and the tile interval."""
+    interval = duration / (cols * rows)
+    stages = [
+        f"fps={1 / interval:.6f}", f"scale={width // cols}:-2",
+        "drawtext=text='%{pts\\:hms}':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=4",
+        f"tile={cols}x{rows}:padding=2:margin=2:color=black",
+    ]
+    args = [FFMPEG, "-v", "error", "-i", path, "-vf", ",".join(stages),
+            "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"]
+    p = _run(args)
+    if p.returncode != 0 or not p.stdout:
+        # a build without libfreetype: try again without drawtext; the arithmetic still holds
+        stages.pop(2)
+        args = [FFMPEG, "-v", "error", "-i", path, "-vf", ",".join(stages),
+                "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"]
+        p = _run(args)
+        if p.returncode != 0 or not p.stdout:
+            _fail(args, p)
+    return p.stdout, interval, cols, rows
+
+
+def scenes(path: str, threshold: float = 0.3) -> list:
+    """Frames where the scene score exceeds threshold, as {"t", "score"}."""
+    args = [FFMPEG, "-v", "info", "-i", path,
+            "-vf", f"scale=320:-2,select='gt(scene,{threshold})',metadata=print", "-an", "-f", "null", "-"]
+    p = _run(args)
+    err = p.stderr.decode(errors="replace")
+    if p.returncode != 0 and "pts_time" not in err:
+        _fail(args, p)
+    return [{"t": round(float(t), 3), "score": round(float(s), 3)}
+            for t, s in re.findall(r"pts_time:\s*([0-9.]+)[^\n]*\n[^\n]*lavfi\.scene_score=([0-9.]+)", err)]
+
+
+def silences(path: str, has_audio: bool, noise_db: float = -30, min_duration: float = 0.5,
+             duration: Optional[float] = None) -> list:
+    """Silent spans as {"start", "end"}. A source without audio returns an empty list without running ffmpeg."""
+    if not has_audio:
+        return []
+    args = [FFMPEG, "-v", "info", "-i", path, "-vn",
+            "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}", "-f", "null", "-"]
+    p = _run(args)
+    err = p.stderr.decode(errors="replace")
+    if p.returncode != 0 and "silence_start" not in err:
+        _fail(args, p)
+    starts = [float(m) for m in re.findall(r"silence_start:\s*([0-9.]+)", err)]
+    ends = [float(m) for m in re.findall(r"silence_end:\s*([0-9.]+)", err)]
+    out = []
+    for i, s in enumerate(starts):
+        e = ends[i] if i < len(ends) else duration
+        if e is not None:
+            out.append({"start": round(s, 3), "end": round(e, 3)})
+    return out

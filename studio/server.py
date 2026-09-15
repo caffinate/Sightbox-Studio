@@ -8,11 +8,12 @@ never by path.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from . import media
 from .project import ChangeError, Store
@@ -26,6 +27,7 @@ CONTENT_TYPES = {
 
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 CHUNK = 1024 * 1024
+FRAME_CACHE_MAX = 200
 
 
 def slugify(name: str) -> str:
@@ -58,6 +60,16 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, code: int, message: str, with_body: bool = True) -> None:
         self._json(code, {"error": message}, with_body)
 
+    def _image(self, data: bytes, headers: dict = None, with_body: bool = True) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        if with_body:
+            self.wfile.write(data)
+
     # ---- routing ---------------------------------------------------------
 
     def do_GET(self):
@@ -86,7 +98,9 @@ class Handler(BaseHTTPRequestHandler):
         self._error(404, "not found")
 
     def _route(self, with_body: bool):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         try:
             if path in ("/", "/studio.html"):
                 return self._get_page(with_body)
@@ -96,6 +110,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.store.media_files(self.server.media_dir), with_body)
             if path.startswith("/media/"):
                 return self._get_media_file(path[len("/media/"):], with_body)
+            if path == "/api/frame":
+                return self._get_frame(query, with_body)
+            if path == "/api/sheet":
+                return self._get_sheet(query, with_body)
+            if path == "/api/scenes":
+                return self._get_scenes(query, with_body)
+            if path == "/api/silences":
+                return self._get_silences(query, with_body)
             self._error(404, "not found", with_body)
         except ChangeError as e:
             self._error(400, str(e), with_body)
@@ -170,6 +192,46 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def _get_frame(self, query: dict, with_body: bool):
+        source = self.store.load().source(query.get("source"))
+        t = float(query.get("t", 0))
+        width = int(query.get("width", 640))
+        path = self.store.resolve(source["path"])
+        key = (source["id"], round(t, 2), width)
+        cache = self.server.frame_cache
+        data = cache.get(key)
+        if data is None:
+            data = media.frame(path, t, width)
+            cache[key] = data
+            if len(cache) > FRAME_CACHE_MAX:
+                cache.popitem(last=False)
+        self._image(data, with_body=with_body)
+
+    def _get_sheet(self, query: dict, with_body: bool):
+        source = self.store.load().source(query.get("source"))
+        cols = int(query.get("cols", 6))
+        rows = int(query.get("rows", 5))
+        width = int(query.get("width", 1920))
+        path = self.store.resolve(source["path"])
+        data, interval, cols, rows = media.sheet(path, source["duration"], cols, rows, width)
+        headers = {"X-Sheet": f"tiles={cols * rows} cols={cols} interval={interval:.3f}"}
+        self._image(data, headers=headers, with_body=with_body)
+
+    def _get_scenes(self, query: dict, with_body: bool):
+        source = self.store.load().source(query.get("source"))
+        threshold = float(query.get("threshold", 0.3))
+        path = self.store.resolve(source["path"])
+        found = media.scenes(path, threshold)
+        self._json(200, {"source": source["id"], "threshold": threshold, "scenes": found}, with_body)
+
+    def _get_silences(self, query: dict, with_body: bool):
+        source = self.store.load().source(query.get("source"))
+        noise = float(query.get("noise", -30))
+        minimum = float(query.get("min", 0.5))
+        path = self.store.resolve(source["path"])
+        found = media.silences(path, source.get("has_audio", False), noise, minimum, duration=source["duration"])
+        self._json(200, {"source": source["id"], "silences": found}, with_body)
+
     # ---- POST handlers -------------------------------------------------
 
     def _post_changes(self, payload: dict):
@@ -201,6 +263,7 @@ def make_server(project_path: str, port: int = 3200, media_dir: str = None) -> T
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     httpd.store = store
     httpd.media_dir = media_dir
+    httpd.frame_cache = collections.OrderedDict()
     return httpd
 
 

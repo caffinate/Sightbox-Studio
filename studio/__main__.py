@@ -73,6 +73,41 @@ def cmd_probe(args):
     print(json.dumps(media.probe(args.file), indent=2))
 
 
+def cmd_frame(args):
+    store = Store(args.project)
+    source = store.load().source(args.source)
+    data = media.frame(store.resolve(source["path"]), args.t, args.width)
+    out = args.out or f"{args.source}-{args.t:g}.jpg"
+    with open(out, "wb") as fh:
+        fh.write(data)
+    print(out)
+
+
+def cmd_sheet(args):
+    store = Store(args.project)
+    source = store.load().source(args.source)
+    data, interval, cols, rows = media.sheet(store.resolve(source["path"]), source["duration"], args.cols, args.rows)
+    out = args.out or f"{args.source}-sheet.jpg"
+    with open(out, "wb") as fh:
+        fh.write(data)
+    print(f"{out}  {cols}x{rows} tiles every {interval:.3f}s")
+
+
+def cmd_scenes(args):
+    store = Store(args.project)
+    source = store.load().source(args.source)
+    found = media.scenes(store.resolve(source["path"]), args.threshold)
+    print(json.dumps(found, indent=2))
+
+
+def cmd_silences(args):
+    store = Store(args.project)
+    source = store.load().source(args.source)
+    found = media.silences(store.resolve(source["path"]), source.get("has_audio", False),
+                            args.noise, args.min, duration=source["duration"])
+    print(json.dumps(found, indent=2))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="studio")
     sub = p.add_subparsers(dest="command", required=True)
@@ -112,6 +147,35 @@ def build_parser() -> argparse.ArgumentParser:
     probe = sub.add_parser("probe", help="what ffprobe says, as the source fields")
     probe.add_argument("file")
     probe.set_defaults(func=cmd_probe)
+
+    frame = sub.add_parser("frame", help="a JPEG frame at a source time")
+    frame.add_argument("project")
+    frame.add_argument("source")
+    frame.add_argument("t", type=float)
+    frame.add_argument("--width", type=int, default=640)
+    frame.add_argument("-o", "--out", dest="out")
+    frame.set_defaults(func=cmd_frame)
+
+    sheet = sub.add_parser("sheet", help="a contact sheet JPEG")
+    sheet.add_argument("project")
+    sheet.add_argument("source")
+    sheet.add_argument("--cols", type=int, default=6)
+    sheet.add_argument("--rows", type=int, default=5)
+    sheet.add_argument("-o", "--out", dest="out")
+    sheet.set_defaults(func=cmd_sheet)
+
+    scenes = sub.add_parser("scenes", help="scene changes as {t, score}")
+    scenes.add_argument("project")
+    scenes.add_argument("source")
+    scenes.add_argument("--threshold", type=float, default=0.3)
+    scenes.set_defaults(func=cmd_scenes)
+
+    silences = sub.add_parser("silences", help="silent spans as {start, end}")
+    silences.add_argument("project")
+    silences.add_argument("source")
+    silences.add_argument("--noise", type=float, default=-30)
+    silences.add_argument("--min", type=float, default=0.5)
+    silences.set_defaults(func=cmd_silences)
 
     return p
 

@@ -70,6 +70,33 @@ class MediaTests(unittest.TestCase):
         with self.assertRaises(ChangeError):
             media.export(no_output, lambda p: p, os.path.join(self.tmp, "y.mp4"))
 
+    def test_frame_is_a_jpeg(self):
+        data = media.frame(self.a, 2.5)
+        self.assertEqual(data[:3], b"\xff\xd8\xff")
+
+    def test_sheet_is_a_jpeg_with_the_tile_arithmetic(self):
+        data, interval, cols, rows = media.sheet(self.a, 4.0, cols=4, rows=2)
+        self.assertEqual(data[:3], b"\xff\xd8\xff")
+        self.assertEqual((cols, rows), (4, 2))
+        self.assertAlmostEqual(interval, 0.5)
+
+    def test_scenes_finds_the_cut_black_to_white(self):
+        found = media.scenes(self.c, 0.3)
+        self.assertEqual([f["t"] for f in found], [2.0])
+        self.assertGreater(found[0]["score"], 0.8)
+
+    def test_scenes_finds_nothing_on_a_still_clip(self):
+        self.assertEqual(media.scenes(self.b, 0.3), [])
+
+    def test_silences_finds_the_gap(self):
+        found = media.silences(self.a, has_audio=True)
+        self.assertEqual(len(found), 1)
+        self.assertAlmostEqual(found[0]["start"], 1.5, delta=0.05)
+        self.assertAlmostEqual(found[0]["end"], 2.5, delta=0.05)
+
+    def test_silences_without_audio_skips_ffmpeg(self):
+        self.assertEqual(media.silences(self.b, has_audio=False), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,106 @@
+#!/bin/bash
+# Sightbox Studio launcher: double-click this app, no Terminal needed.
+#
+# What it does, in order: makes sure ffmpeg is installed (offering to install
+# it via Homebrew if it's missing and Homebrew is present); on the very first
+# run, asks which folder your clips are in and builds a project from them;
+# starts the local server if it isn't already running; opens the editor in
+# your browser; and shows a small window with a Stop button that shuts the
+# server down when you're done.
+#
+# Everything this launches is the same standard-library Python program
+# described in README.md -- this script only automates the steps a person
+# would otherwise type into Terminal by hand.
+
+set -u
+
+# Resolve the repository root: this script lives at
+# "Launch Sightbox Studio.app/Contents/MacOS/launch" inside the repo.
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cd "$APP_DIR" || exit 1
+
+PROJECT_DIR="$HOME/Movies/Sightbox Studio"
+PROJECT="$PROJECT_DIR/project.json"
+PORT=3200
+URL="http://127.0.0.1:$PORT/studio.html"
+LOG="$PROJECT_DIR/server.log"
+
+notify() {
+  osascript -e "display dialog \"$1\" buttons {\"OK\"} default button 1 with icon note with title \"Sightbox Studio\"" >/dev/null 2>&1
+}
+
+ask_yes_no() {
+  osascript -e "display dialog \"$1\" buttons {\"Cancel\", \"Yes\"} default button 2 with icon note with title \"Sightbox Studio\"" 2>/dev/null | grep -q "Yes"
+}
+
+choose_folder() {
+  osascript -e "POSIX path of (choose folder with prompt \"$1\")" 2>/dev/null
+}
+
+# ---- 1. ffmpeg, installed once ------------------------------------------
+
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    if ask_yes_no "Sightbox Studio needs ffmpeg, a free video tool, before it can run. Install it now with Homebrew? This happens once and can take a minute or two."; then
+      if ! brew install ffmpeg; then
+        notify "Installing ffmpeg didn't work. Open Terminal and run: brew install ffmpeg -- then reopen Sightbox Studio."
+        exit 1
+      fi
+    else
+      exit 0
+    fi
+  else
+    notify "Sightbox Studio needs ffmpeg, and that needs Homebrew, which isn't installed. Install Homebrew from brew.sh, then reopen Sightbox Studio."
+    exit 1
+  fi
+fi
+
+# ---- 2. the project, built once on first run ------------------------------
+
+mkdir -p "$PROJECT_DIR"
+
+if [ ! -f "$PROJECT" ]; then
+  CLIPS_DIR="$(choose_folder "Pick the folder with your video clips")"
+  if [ -z "$CLIPS_DIR" ]; then
+    exit 0
+  fi
+  if ! python3 -m studio new "$PROJECT" --name "My Project"; then
+    notify "Could not create the project file. See $LOG for details if this keeps happening."
+    exit 1
+  fi
+  shopt -s nullglob nocaseglob
+  CLIPS=("$CLIPS_DIR"/*.mov "$CLIPS_DIR"/*.mp4 "$CLIPS_DIR"/*.m4v "$CLIPS_DIR"/*.webm "$CLIPS_DIR"/*.mkv)
+  shopt -u nocaseglob
+  if [ "${#CLIPS[@]}" -gt 0 ]; then
+    python3 -m studio add "$PROJECT" "${CLIPS[@]}" --cut >>"$LOG" 2>&1
+  else
+    notify "No video clips were found in that folder. You can still add clips later from inside Studio."
+  fi
+fi
+
+# ---- 3. the server, started once ------------------------------------------
+
+STARTED_SERVER=0
+if ! curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/api/project"; then
+  nohup python3 -m studio serve "$PROJECT" --port "$PORT" >>"$LOG" 2>&1 &
+  SERVER_PID=$!
+  STARTED_SERVER=1
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/api/project"; then
+      break
+    fi
+    sleep 0.5
+  done
+fi
+
+# ---- 4. the browser ---------------------------------------------------
+
+open "$URL"
+
+# ---- 5. a status window; Stop shuts the server down ------------------------
+
+osascript -e "display dialog \"Sightbox Studio is running at:\n\n$URL\n\nClick Stop when you're done editing.\" buttons {\"Stop\"} default button 1 with icon note with title \"Sightbox Studio\"" >/dev/null 2>&1
+
+if [ "$STARTED_SERVER" -eq 1 ] && [ -n "${SERVER_PID:-}" ]; then
+  kill "$SERVER_PID" 2>/dev/null
+fi

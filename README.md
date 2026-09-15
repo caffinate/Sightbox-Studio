@@ -16,6 +16,16 @@ Read both before building. The boundaries are in `AGENTS.md`.
 
 ## Run
 
+**No Terminal, on a Mac:** double-click `Launch Sightbox Studio.app`. The first time,
+it asks which folder your clips are in and builds a project from them; every time after
+that, it starts the server and opens the editor in your browser. A small window with a
+Stop button shuts the server down when you're done. It still needs ffmpeg installed
+once (see below) — if you have Homebrew, the app offers to install ffmpeg itself; if you
+don't have Homebrew, install it from [brew.sh](https://brew.sh) first, then reopen the
+app. The project it builds lives at `~/Movies/Sightbox Studio/project.json`.
+
+**From Terminal**, or on any other platform:
+
 ```bash
 brew install ffmpeg                                                  # once
 python3 -m studio new ~/Movies/flux/project.json --name "Flux teaser"

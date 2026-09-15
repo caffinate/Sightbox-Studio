@@ -19,7 +19,9 @@ Python 3.9 or newer and ffmpeg. Nothing else.
 
 ## State
 
-Build order 1 is in the repository: the cut list and the write path (`studio/project.py`), tested. Build orders 2 to 5 (media and server, the page, the agent eyes, MCP) are specified in the brief and not yet built. `python3 -m studio` does not run yet.
+All build orders in `BRIEF.md` are in the repository: the cut list and the write
+path, media and the server and CLI, the page, the agent's eyes (frame, sheet,
+scenes, silences), and MCP. `python3 -m studio --help` lists every command.
 
 ## Preview note
 

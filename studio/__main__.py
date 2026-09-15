@@ -69,6 +69,11 @@ def cmd_serve(args):
     run_server(args.project, port=args.port, media_dir=args.media)
 
 
+def cmd_mcp(args):
+    from . import mcp
+    mcp.serve(args.project)
+
+
 def cmd_probe(args):
     print(json.dumps(media.probe(args.file), indent=2))
 
@@ -176,6 +181,10 @@ def build_parser() -> argparse.ArgumentParser:
     silences.add_argument("--noise", type=float, default=-30)
     silences.add_argument("--min", type=float, default=0.5)
     silences.set_defaults(func=cmd_silences)
+
+    mcp = sub.add_parser("mcp", help="the MCP server on stdio")
+    mcp.add_argument("project")
+    mcp.set_defaults(func=cmd_mcp)
 
     return p
 

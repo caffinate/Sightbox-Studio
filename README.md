@@ -19,7 +19,19 @@ Python 3.9 or newer and ffmpeg. Nothing else.
 
 ## State
 
-Build order 1 is in the repository: the cut list and the write path (`studio/project.py`), tested. Build orders 2 to 5 (media and server, the page, the agent eyes, MCP) are specified in the brief and not yet built. `python3 -m studio` does not run yet.
+Build orders 1 to 3 are in the repository and tested: the cut list and the write
+path (`studio/project.py`), media and the server (`studio/media.py`,
+`studio/server.py`, `studio/__main__.py`), and the page (`app/studio.html`).
+Build orders 4 and 5 (agent eyes, MCP) are specified in the brief and not yet
+built.
+
+The page is styled with the Sightbox Design System (charcoal canvas, white
+ink, cyan accent, hairline rings, tracked mono labels) rather than the token
+appendix in `BRIEF.md`, at the person's direction. It runs on system font
+stacks only — no webfont `<link>` — so it never depends on network access to
+render or to pass a console-error check; that's also the design system's own
+documented fallback for its two commercial faces (Neue Haas Grotesk, NB
+Architekt Std).
 
 ## Preview note
 

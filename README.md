@@ -1,10 +1,30 @@
 # Sightbox Studio
 
-A simple timeline video editor with one write path for a person and an agent. One track, cuts only. The cut list is a JSON file; a page in the browser is a view over it; a local Python server applies changes, serves the media and runs ffmpeg; an agent changes it the same way, through the same server, and sees the footage through ffmpeg: frames, contact sheets, scene changes, silences. Export is a real H.264 MP4.
+A timeline video editor with one write path for a person and an agent. Multiple video
+and audio tracks, clips positioned in time, a linked video+audio pair per source that
+can be independently unlinked (so a clip becomes audio-only or video-only), and
+picture-priority resolution across overlapping video tracks for cutaway/insert-edit
+workflows (J-cuts, L-cuts). The cut list is a JSON file; a page in the browser is a view
+over it; a local Python server applies changes, serves the media and runs ffmpeg; an
+agent changes it the same way, through the same server, and sees the footage through
+ffmpeg: frames, contact sheets, scene changes, silences. Export is a real H.264 MP4,
+picture and mixed audio both pinned to the same frame-accurate clock.
 
-The build brief is `BRIEF.md`. Read it before building. The boundaries are in `AGENTS.md`.
+The original build brief is `BRIEF.md` (single-track); multi-track editing is specified
+in `MULTITRACK-BRIEF.md`, which supersedes `BRIEF.md`'s "cuts only, one track" decision.
+Read both before building. The boundaries are in `AGENTS.md`.
 
 ## Run
+
+**No Terminal, on a Mac:** double-click `Launch Sightbox Studio.app`. The first time,
+it asks which folder your clips are in and builds a project from them; every time after
+that, it starts the server and opens the editor in your browser. A small window with a
+Stop button shuts the server down when you're done. It still needs ffmpeg installed
+once (see below) — if you have Homebrew, the app offers to install ffmpeg itself; if you
+don't have Homebrew, install it from [brew.sh](https://brew.sh) first, then reopen the
+app. The project it builds lives at `~/Movies/Sightbox Studio/project.json`.
+
+**From Terminal**, or on any other platform:
 
 ```bash
 brew install ffmpeg                                                  # once
@@ -19,7 +39,13 @@ Python 3.9 or newer and ffmpeg. Nothing else.
 
 ## State
 
-Build order 1 is in the repository: the cut list and the write path (`studio/project.py`), tested. Build orders 2 to 5 (media and server, the page, the agent eyes, MCP) are specified in the brief and not yet built. `python3 -m studio` does not run yet.
+All build orders in `BRIEF.md` are in the repository: the cut list and the write
+path, media and the server and CLI, the page, the agent's eyes (frame, sheet,
+scenes, silences), and MCP. `MULTITRACK-BRIEF.md`'s build order is also complete:
+tracks, linked clips, `video_segments()` priority resolution, the multi-track
+export graph, the multi-row page, and MCP over the same shape. A version-1
+project file (from before multi-track) opens and migrates automatically.
+`python3 -m studio --help` lists every command.
 
 ## Preview note
 
